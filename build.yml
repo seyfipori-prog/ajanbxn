@@ -1,0 +1,161 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK components
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-30" "build-tools;30.0.3"
+
+      - name: Install Gradle 6.1.1
+        run: |
+          cd $HOME
+          wget -q https://services.gradle.org/distributions/gradle-6.1.1-bin.zip
+          unzip -q gradle-6.1.1-bin.zip
+          echo "$HOME/gradle-6.1.1/bin" >> $GITHUB_PATH
+
+      - name: Create project files
+        run: |
+          mkdir -p GradleTest/app/src/main/java/com/example/gradletest
+
+          cat > GradleTest/settings.gradle << 'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          rootProject.name = "GradleTest"
+          include ':app'
+          EOF
+
+          cat > GradleTest/build.gradle << 'EOF'
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:4.0.1'
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          task clean(type: Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
+          cat > GradleTest/app/build.gradle << 'EOF'
+          apply plugin: 'com.android.application'
+
+          android {
+              compileSdkVersion 30
+
+              defaultConfig {
+                  applicationId "com.example.gradletest"
+                  minSdkVersion 21
+                  targetSdkVersion 30
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+          }
+
+          dependencies {
+          }
+          EOF
+
+          cat > GradleTest/app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.example.gradletest">
+
+              <application
+                  android:label="GradleTest"
+                  android:theme="@android:style/Theme.Black.NoTitleBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+              </application>
+
+          </manifest>
+          EOF
+
+          cat > GradleTest/app/src/main/java/com/example/gradletest/MainActivity.java << 'EOF'
+          package com.example.gradletest;
+
+          import android.app.Activity;
+          import android.graphics.Color;
+          import android.os.Bundle;
+          import android.view.Gravity;
+          import android.widget.TextView;
+
+          public class MainActivity extends Activity {
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  TextView textView = new TextView(this);
+                  textView.setText("Gradle Works!");
+                  textView.setTextColor(Color.WHITE);
+                  textView.setTextSize(24);
+                  textView.setGravity(Gravity.CENTER);
+                  textView.setBackgroundColor(Color.BLACK);
+
+                  setContentView(textView);
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: |
+          cd GradleTest
+          gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GradleTest-debug
+          path: GradleTest/app/build/outputs/apk/debug/app-debug.apk
